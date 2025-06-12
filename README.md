@@ -1,20 +1,20 @@
-# 闪电兑换套利
+# UNI_V2 闪电兑换套利
 
 ![IMG0_Task](./images/IMG0_Task1.png)
 
-## 1. 闪电兑套利的逻辑
+## A. 闪电兑套利的逻辑
 
-**A 资产**和 **B 资产**作为交易对，其中任一资产在**外部 DEX** 的价格低于**当前 DEX**（指 UniswapV2） 的价格时，即存在套利空间。
+**A 资产**和 **B 资产**作为交易对，其中任一资产在**外部 DEX** 的价格低于**当前 DEX**（指 **Uniswap V2**） 的价格时，即存在套利空间。
 
 **举例说明**：若 **ETH/DAI** 在 **外部 DEX** 和 **当前 DEX（UniswapV2）** 两个池子中的价格分别为 `2000:1` 和 `2200:1`。显然，**外部 DEX** 中的 ETH 价格更低，存在套利机会。
 
 **闪电兑套利**充分使用了**闪电兑**的优势（“空手套白狼”），针对这个例子，其套利步骤如下：
 
 1. **外层兑换的发起**：通过直接调用 **当前 DEX** 的 **UniswapV2Pair** 合约的 {**swap**} 方法（参数 `data` 不为空字节）发起兑换交易，并要求兑出<u>准确的</u> 2200 DAI（“**应投入的数量**”预计为 1 ETH 与手续费，可使用 **UniswapV2Library.getAmountsIn** 的返回的数组结果的第一个元素求得具体应投入的资产数量）；
-2. **内层兑换与数量要求**（在回调方法  **{uniswapV2Call}** 中执行）：由于**闪电兑**的“**乐观转账**”，这 2200 DAI 会先发送给接收者（用户的合约），接收者（用户的合约）通过其内部实现的回调方法  **{uniswapV2Call}** “挪用”乐观转入的全额资产（2200 DAI） 在 **外部 DEX** 中兑换 ETH（**内层兑换**），并要求“**内层兑换**中兑出的 ETH 数量大于**外层兑换**中应投入的资产数额”（保证有套利空间）；
-3. **归还“应投入的资产”**（在回调方法  **{uniswapV2Call}** 中执行）：将**内层兑换**兑出的 ETH 中的其中一部分“归还”给**外层兑换**（**UniswapV2Pair** 合约），“归还”的数量等于“**应投入的数量**”；
+2. **内层兑换与数量要求**（在回调方法  **{uniswapV2Call}** 中执行）：由于**闪电兑**的“**乐观转账**”，这 2200 DAI 会先发送给接收者（用户的合约），接收者（用户的合约）通过其内部实现的回调方法  **{uniswapV2Call}** “挪用”乐观转入的全额资产（2200 DAI） 在 **外部 DEX** 中兑换 **ETH**（**内层兑换**），并要求“**内层兑换**中兑出的 **ETH** 数量大于**外层兑换**中应投入的资产数额”（保证有套利空间）；
+3. **归还“应投入的资产”**（在回调方法  **{uniswapV2Call}** 中执行）：将**内层兑换**兑出的 **ETH** 中的其中一部分“归还”给**外层兑换**（**UniswapV2Pair** 合约），“归还”的数量等于“**应投入的数量**”；
 4. 若前一步“归还”的“应投入的资产”是足够的，则顺利通过“**投入量检查**”，**UniswapV2Pair** 合约在更新自己的两种资产的储备量之后，**外层兑换**结束；
-5. 未被“归还”的 ETH 就是套利者所获得的利润，套利完成。
+5. 未被“归还”的 **ETH** 就是套利者所获得的利润，套利完成。
 
 ---
 
@@ -27,7 +27,9 @@
 
 <br />
 
-## 2. 闪电兑套利合约详解
+
+
+## B. 闪电兑套利合约详解
 
 ```solidity
 // SPDX-License-Identifier: MIT
@@ -42,7 +44,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
     address factory_UNIV2;	// 当前 DEX 的工厂合约地址
 		
-		// 事件：执行了套利
+    // 事件：执行了套利
     event ArbitrageConducted(
         address indexed factory_TargetDEX, address indexed earnedAsset, uint256 indexed earnedAmount, address pairedAsset
     );
@@ -53,7 +55,7 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         factory_UNIV2 = _factory_UNIV2;
     }
 		
-		// 为接收 ETH 做准备
+    // 为接收 ETH 做准备
     receive() external payable {}
 
     /**
@@ -68,7 +70,7 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
      * @param data 额外的数据（用于实现套利逻辑）
      */
     function uniswapV2Call(address sender, uint256 amount0Out, uint256 amount1Out, bytes memory data) external {
-    		// 获取调用者（当前 DEX 的 UniswapV2Pair 合约）对应的交易对的两种 token
+        // 获取调用者（当前 DEX 的 UniswapV2Pair 合约）对应的交易对的两种 token
         address token0 = IUniswapV2Pair(msg.sender).token0();
         address token1 = IUniswapV2Pair(msg.sender).token1();
         
@@ -84,11 +86,11 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         path[0] = amount0Out == 0 ? token0 : token1;
         path[1] = amount0Out == 0 ? token1 : token0;
 				
-				// 解码 data 数据：外部 DEX 的工厂合约地址和用户指定的最小套利数额
+        // 解码 data 数据：外部 DEX 的工厂合约地址和用户指定的最小套利数额
         (address targetFactory, uint256 minArbitrage) = abi.decode(data, (address, uint256));
         address targetPair = UniswapV2Library.pairFor(targetFactory, token0, token1);
 				
-				// 声明局部变量，表示内部兑换所投入的 token 数量（等于外部兑换兑出的数量），后续再赋值
+        // 声明局部变量，表示内部兑换所投入的 token 数量（等于外部兑换兑出的数量），后续再赋值
         uint256 amountIn_InnerSwap;
 
         if (amount0Out > 0) {
@@ -100,7 +102,7 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         // 将外部兑换兑出的数量作为内部兑换所投入的 token 数量，即`amountIn_InnerSwap`，全部投入到内层兑换中
         require(IERC20(path[1]).transfer(targetPair, amountIn_InnerSwap), "Fail to transfer token to inner-swap");
 				
-				// 通过内部方法 {_executeInnerSwap} 执行内层兑换，并返回套利的数量 `arbitrage` 和 外层兑换所需投入的数量`amountRequired_OuterSwap`
+        // 通过内部方法 {_executeInnerSwap} 执行内层兑换，并返回套利的数量 `arbitrage` 和 外层兑换所需投入的数量`amountRequired_OuterSwap`
         (uint256 arbitrage, uint256 amountRequired_OuterSwap) = _executeInnerSwap(targetPair, targetFactory, path[1], amountIn_InnerSwap, minArbitrage, path);
             
         // 向外层兑换（当前 DEX 的 UniswapV2Pair 合约）归还外层兑换所需投入的数量
@@ -146,31 +148,31 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         IUniswapV2Pair(pairAddr).swap(amount0Out, amount1Out, address(this), data);
     }
 		
-		/**
-		 * @notice owner 取出指定数量的某一种套利的资产给指定地址
-		 *
-		 * @param to 接收者地址
-		 * @param tokenAddr 转账的 token 对应的地址
-		 * @param amount 发送的数量
-		 */
+   /**
+    * @notice owner 取出指定数量的某一种套利的资产给指定地址
+    *
+    * @param to 接收者地址
+    * @param tokenAddr 转账的 token 对应的地址
+    * @param amount 发送的数量
+    */
     function withdrawArbitrage(address to, address tokenAddr, uint256 amount) external onlyOwner{
         // bytes4(keccak256(bytes('transfer(address,uint256)'))):
         (bool success, bytes memory data) = tokenAddr.call(abi.encodeWithSelector(0xa9059cbb, to, amount));
         require(success && (data.length == 0 || abi.decode(data, (bool))), 'Failed to transfer arbitrage');
     }
 		
-		/**
-		 * @notice 更新当前 DEX 的工厂合约地址（更改后，当前 DEX 则变为另一个 DEX）
-		 *
-		 * @param _newFactory_UNIV2 新的 DEX 的工厂合约地址
-		 */
+   /**
+    * @notice 更新当前 DEX 的工厂合约地址（更改后，当前 DEX 则变为另一个 DEX）
+    *
+    * @param _newFactory_UNIV2 新的 DEX 的工厂合约地址
+    */
     function updateFactory_UNIV2(address _newFactory_UNIV2) external onlyOwner {
         address previousAddr = factory_UNIV2;
         factory_UNIV2 = _newFactory_UNIV2;
         emit FactoryUNIV2Changed(previousAddr, _newFactory_UNIV2);
     }
 		
-		/**
+    /**
      * @notice 获取兑换路径中最后一种 token 的兑出数量
      *
      * @param factory DEX 工厂合约的地址
@@ -181,7 +183,7 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         return UniswapV2Library.getAmountsOut(factory, amountIn, path)[path.length - 1];
     }
 		
-		/**
+    /**
      * @notice Get the swap-in amount of the first token in the path of the swap
      *
      * @param factory DEX 工厂合约的地址
@@ -192,7 +194,7 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         return UniswapV2Library.getAmountsIn(factory, amountOut, path)[0];
     }
 		
-		/**
+    /**
      * @dev 执行内层兑换
      *
      * @param pair_Inner 内层兑换使用的外部 DEX 的 UniswapV2Pair 合约的地址
@@ -246,13 +248,17 @@ contract FlashSwapArbitrage is Ownable, IUniswapV2Callee {
         // 检查套利的实际数额是否大于套利的最小数额
         require(arbitrage > minArbitrage, "Insufficient arbitrage");
 				
-				// 返回值
+        // 返回值
         return (arbitrage, amountRequired_OuterSwap);
     }
 }
 ```
 
-## 3. 套利合约的测试用例
+<br />
+
+
+
+## C. 套利合约的测试用例
 
 ```solidity
 // SPDX-License-Identifier: UNLICENSED
@@ -322,7 +328,7 @@ contract TestFlashSwapArbitrage is Test {
         vm.stopPrank();
     }
 
-		// 测试：检测闪电兑套利是否能套得利润
+    // 测试：检测闪电兑套利是否能套得利润
     function test_ArbitrageByFlashSwap() public {
         vm.startPrank(alice);
         address targetFactory = factoryAddr_Inner;
@@ -344,8 +350,12 @@ contract TestFlashSwapArbitrage is Test {
 }
 ```
 
-### 测试结果
+### 1. 测试结果
 
 ![IMG1_TestResult1](./images/IMG1_TestResult1.png)
 
 ![IMG2_TestResult2](./images/IMG2_TestResult2.png)
+
+
+
+------------------------------------------------------ **END** ------------------------------------------------------
